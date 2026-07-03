@@ -121,11 +121,22 @@ class LinkItem(QGraphicsPathItem):
     def __init__(self, link_id: str, trunk: bool = False):
         super().__init__()
         self.link_id = link_id
-        pen = QPen(QColor(PALETTE["border"]), 2)
-        if trunk:
-            pen.setStyle(Qt.DashLine)
-        self.setPen(pen)
+        self._trunk = trunk
+        self.setFlag(QGraphicsItem.ItemIsSelectable, True)
+        self.setPen(self._pen())
         self.setZValue(-1)  # below nodes
+
+    def _pen(self) -> QPen:
+        selected = self.isSelected()
+        pen = QPen(QColor(PALETTE["accent"] if selected else PALETTE["border"]),
+                   3 if selected else 2)
+        if self._trunk:
+            pen.setStyle(Qt.DashLine)
+        return pen
+
+    def paint(self, painter, option, widget=None):
+        self.setPen(self._pen())
+        super().paint(painter, option, widget)
 
     def route(self, a: QPointF, b: QPointF) -> None:
         path = QPainterPath(a)
@@ -239,6 +250,7 @@ class TopologyView(QGraphicsView):
         self._link_start: str | None = None
         self._drop_sink = None  # (kind, x, y) -> None
         self._link_sink = None  # (a_device, b_device) -> None
+        self._context_sink = None  # () -> None  (delete selection)
 
     # ---- external wiring ---------------------------------------------------
     def set_drop_sink(self, fn) -> None:
@@ -246,6 +258,27 @@ class TopologyView(QGraphicsView):
 
     def set_link_sink(self, fn) -> None:
         self._link_sink = fn
+
+    def set_context_sink(self, fn) -> None:
+        self._context_sink = fn
+
+    # ---- right-click: delete under cursor ----------------------------------
+    def contextMenuEvent(self, event):
+        item = self.itemAt(event.pos())
+        target = item
+        while target is not None and not isinstance(target, (DeviceItem, LinkItem)):
+            target = target.parentItem()
+        if target is None or self._context_sink is None:
+            return
+        if not target.isSelected():
+            for other in self.scene().selectedItems():
+                other.setSelected(False)
+            target.setSelected(True)
+        from PyQt5.QtWidgets import QMenu
+
+        menu = QMenu(self)
+        menu.addAction("Delete").triggered.connect(self._context_sink)
+        menu.exec_(event.globalPos())
 
     def set_link_mode(self, on: bool) -> None:
         self.link_mode = on

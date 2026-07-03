@@ -16,12 +16,17 @@ import sys
 import threading
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QIcon
+from PyQt5.QtGui import QColor, QIcon, QKeySequence
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QAction,
     QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QDockWidget,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -54,6 +59,8 @@ from core.commands import (
     CreateVlan,
     DeleteVlan,
     MoveDevice,
+    RemoveDevice,
+    RemoveLink,
     RenameDevice,
     SetDeviceFields,
     SetPortVlan,
@@ -65,7 +72,7 @@ from core.policy import import_policy_file
 from core.project import NetwrightProject
 from core.settings import Settings
 from core.validate import validate
-from .canvas import MIME_DEVICE, TopologyScene, TopologyView
+from .canvas import MIME_DEVICE, DeviceItem, LinkItem, TopologyScene, TopologyView
 from .commands_qt import CoreCommandWrapper
 from .theme import build_qss, palette_for, severity_colors
 
@@ -129,6 +136,119 @@ class PaletteList(QListWidget):
         data.setText(kind)
         data.setData(MIME_DEVICE, kind.encode("utf-8"))
         return data
+
+
+class CredentialDialog(QDialog):
+    """Collect one device's connection details for live discovery.
+
+    Type a host directly (no JSON needed), or load an inventory file. Requires an
+    explicit authorization acknowledgement before it will proceed.
+    """
+
+    SSH_DEVICE_TYPES = [
+        "huawei", "huawei_vrpv8", "hp_comware", "cisco_ios", "cisco_xe",
+        "cisco_nxos", "arista_eos", "juniper_junos", "generic",
+    ]
+
+    def __init__(self, parent, mode: str):
+        super().__init__(parent)
+        self.mode = mode  # "ssh" | "snmp"
+        self._file_creds = None
+        self.setWindowTitle(f"Live discovery — {'SSH' if mode == 'ssh' else 'SNMP'}")
+        self.setMinimumWidth(400)
+
+        form = QFormLayout(self)
+        self.host = QLineEdit()
+        self.host.setPlaceholderText("10.0.0.1")
+        self.name = QLineEdit()
+        self.name.setPlaceholderText("optional label")
+        form.addRow("Host / IP", self.host)
+        form.addRow("Name", self.name)
+
+        if mode == "ssh":
+            self.username = QLineEdit()
+            self.password = QLineEdit()
+            self.password.setEchoMode(QLineEdit.Password)
+            self.device_type = QComboBox()
+            self.device_type.addItems(self.SSH_DEVICE_TYPES)
+            form.addRow("Username", self.username)
+            form.addRow("Password", self.password)
+            form.addRow("Device type", self.device_type)
+        else:
+            self.community = QLineEdit("public")
+            self.version = QComboBox()
+            self.version.addItems(["2c", "1"])
+            form.addRow("Community", self.community)
+            form.addRow("SNMP version", self.version)
+
+        self.authorized = QCheckBox("These are devices I'm authorized to access")
+        form.addRow(self.authorized)
+
+        buttons = QDialogButtonBox()
+        file_btn = buttons.addButton("From file…", QDialogButtonBox.ActionRole)
+        ok = buttons.addButton(QDialogButtonBox.Ok)
+        ok.setText("Discover")
+        buttons.addButton(QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        file_btn.clicked.connect(self._from_file)
+        form.addRow(buttons)
+
+    def _require_authorized(self) -> bool:
+        if not self.authorized.isChecked():
+            QMessageBox.warning(
+                self, "Authorization required",
+                "Tick the authorization box to continue.",
+            )
+            return False
+        return True
+
+    def _accept(self) -> None:
+        if not self._require_authorized():
+            return
+        if not self.host.text().strip():
+            QMessageBox.warning(self, "Host required", "Enter a host or IP address.")
+            return
+        self.accept()
+
+    def _from_file(self) -> None:
+        if not self._require_authorized():
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Inventory (JSON)", ROOT, "Inventory (*.json)"
+        )
+        if not path:
+            return
+        try:
+            if self.mode == "ssh":
+                from core.live_discovery import load_inventory
+            else:
+                from core.snmp_discovery import load_inventory
+            self._file_creds = load_inventory(path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Inventory error", str(exc))
+            return
+        self.accept()
+
+    def credentials(self) -> list:
+        if self._file_creds is not None:
+            return self._file_creds
+        host = self.host.text().strip()
+        label = self.name.text().strip() or None
+        if self.mode == "ssh":
+            from core.live_discovery import DeviceCredential
+
+            return [DeviceCredential(
+                host=host, username=self.username.text().strip(),
+                password=self.password.text(),
+                device_type=self.device_type.currentText(), name=label,
+            )]
+        from core.snmp_discovery import SnmpCredential
+
+        return [SnmpCredential(
+            host=host, community=self.community.text().strip() or "public",
+            version=self.version.currentText(), name=label,
+        )]
 
 
 class NetwrightWindow(QMainWindow):
@@ -210,6 +330,16 @@ class NetwrightWindow(QMainWindow):
         tb.addSeparator()
         tb.addAction(self.undo_stack.createUndoAction(self, "Undo"))
         tb.addAction(self.undo_stack.createRedoAction(self, "Redo"))
+        # Delete the selected device(s)/link(s). Del or Backspace, or right-click.
+        self.delete_action = QAction("Delete", self)
+        self.delete_action.setShortcuts(
+            [QKeySequence(Qt.Key_Delete), QKeySequence(Qt.Key_Backspace)]
+        )
+        self.delete_action.setShortcutContext(Qt.WindowShortcut)
+        self.delete_action.triggered.connect(self.delete_selected)
+        self.addAction(self.delete_action)  # active window-wide
+        tb.addAction(self.delete_action)
+        self.canvas.set_context_sink(self.delete_selected)
         tb.addSeparator()
         self.link_action = QAction("Link", self)
         self.link_action.setCheckable(True)
@@ -522,6 +652,39 @@ class NetwrightWindow(QMainWindow):
     def rename_device(self, device_id: str, name: str) -> None:
         self._apply(RenameDevice(device_id, name), "Rename device")
 
+    def delete_selected(self) -> int:
+        """Delete the selected devices/links (undoable). Bound to Del/Backspace."""
+        device_ids = [
+            it.device_id
+            for it in self.scene.selectedItems()
+            if isinstance(it, DeviceItem)
+        ]
+        link_ids = [
+            it.link_id
+            for it in self.scene.selectedItems()
+            if isinstance(it, LinkItem)
+        ]
+        # Removing a device already takes its incident links; drop those link ids
+        # so we don't try to remove the same link twice.
+        incident = {
+            lk.id
+            for lk in self.project.topology.links.values()
+            if lk.a_device in device_ids or lk.b_device in device_ids
+        }
+        link_ids = [lid for lid in link_ids if lid not in incident]
+
+        cmds = [RemoveLink(lid) for lid in link_ids]
+        cmds += [RemoveDevice(did) for did in device_ids]
+        if not cmds:
+            return 0
+        label = (
+            cmds[0].name
+            if len(cmds) == 1
+            else f"Delete {len(device_ids)} device(s), {len(link_ids)} link(s)"
+        )
+        self._apply(cmds[0] if len(cmds) == 1 else CompositeCommand(cmds, label), label)
+        return len(cmds)
+
     def set_port_access_vlan(self, device_id: str, port_id: str, vlan: int | None) -> None:
         self._apply(SetPortVlan(device_id, port_id, vlan), "Set access VLAN")
 
@@ -674,47 +837,35 @@ class NetwrightWindow(QMainWindow):
             self.load_topology(result.topology)
         return result
 
-    def live_discover_dialog(self) -> None:
-        from PyQt5.QtWidgets import QFileDialog
-
-        from core.live_discovery import available as ssh_available
-        from core.live_discovery import load_inventory
-
-        if not ssh_available():
-            QMessageBox.warning(
-                self, "Live discovery",
-                "The 'netmiko' package is not installed.\n\n"
-                "Run: pip install netmiko",
-            )
-            return
-        resp = QMessageBox.question(
-            self, "Authorized use",
-            "Live discovery connects to the devices in your inventory over SSH.\n"
-            "Only proceed for networks you own or are authorized to manage.\n\n"
-            "Continue?",
-            QMessageBox.Yes | QMessageBox.No,
-        )
-        if resp != QMessageBox.Yes or not self._confirm_discard():
-            return
-        path, _ = QFileDialog.getOpenFileName(
-            self, "SSH inventory (JSON)", ROOT, "Inventory (*.json)"
-        )
-        if not path:
-            return
-        try:
-            creds = load_inventory(path)
-        except Exception as exc:
-            QMessageBox.critical(self, "Inventory error", str(exc))
-            return
-
+    def _run_discovery_worker(self, fn) -> None:
+        """Run a blocking discovery call off the UI thread; report via signals."""
         def worker():
             try:
-                self.discover_live(creds, authorized=True)
+                fn()
                 self.live_result_ready.emit(True)
             except Exception as exc:  # noqa: BLE001
                 self.live_failed.emit(str(exc))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def live_discover_dialog(self) -> None:
+        from core.live_discovery import available as ssh_available
+
+        if not ssh_available():
+            QMessageBox.warning(
+                self, "Live discovery",
+                "The 'netmiko' package is not installed.\n\nRun: pip install netmiko",
+            )
+            return
+        dialog = CredentialDialog(self, "ssh")
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        creds = dialog.credentials()
+        if not creds or not self._confirm_discard():
+            return
+        self._run_discovery_worker(
+            lambda: self.discover_live(creds, authorized=True)
+        )
 
     def _on_live_result(self, _ok) -> None:
         self.canvas.fit_to_view()
@@ -735,10 +886,7 @@ class NetwrightWindow(QMainWindow):
         return result
 
     def snmp_discover_dialog(self) -> None:
-        from PyQt5.QtWidgets import QFileDialog
-
         from core.snmp_discovery import available as snmp_available
-        from core.snmp_discovery import load_inventory as load_snmp_inventory
 
         if not snmp_available():
             QMessageBox.warning(
@@ -746,34 +894,15 @@ class NetwrightWindow(QMainWindow):
                 "The 'pysnmp' package is not installed.\n\nRun: pip install pysnmp",
             )
             return
-        resp = QMessageBox.question(
-            self, "Authorized use",
-            "SNMP discovery reads the LLDP-MIB from the devices in your inventory.\n"
-            "Only proceed for networks you own or are authorized to manage.\n\n"
-            "Continue?",
-            QMessageBox.Yes | QMessageBox.No,
+        dialog = CredentialDialog(self, "snmp")
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        creds = dialog.credentials()
+        if not creds or not self._confirm_discard():
+            return
+        self._run_discovery_worker(
+            lambda: self.discover_snmp(creds, authorized=True)
         )
-        if resp != QMessageBox.Yes or not self._confirm_discard():
-            return
-        path, _ = QFileDialog.getOpenFileName(
-            self, "SNMP inventory (JSON)", ROOT, "Inventory (*.json)"
-        )
-        if not path:
-            return
-        try:
-            creds = load_snmp_inventory(path)
-        except Exception as exc:
-            QMessageBox.critical(self, "Inventory error", str(exc))
-            return
-
-        def worker():
-            try:
-                self.discover_snmp(creds, authorized=True)
-                self.live_result_ready.emit(True)
-            except Exception as exc:  # noqa: BLE001
-                self.live_failed.emit(str(exc))
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def import_policy_dialog(self) -> None:
         from PyQt5.QtWidgets import QFileDialog

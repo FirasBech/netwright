@@ -13,6 +13,9 @@ export.
 2. **Draw links.** Switch to Link mode (`L`), then drag from one device's port to
    another's. A link joins two *ports*; access vs. trunk styling is shown.
 3. **Move and arrange.** Drag nodes; they snap to the grid. Links follow.
+4. **Delete.** Select a device or link and press `Del` (or `Backspace`), use the
+   toolbar **Delete**, or right-click → **Delete**. Removing a device also removes
+   its links, and it's a single undo step.
 
 ## 2. VLANs, subnets, and trunks
 
@@ -116,7 +119,10 @@ devices you administer:
 ]
 ```
 
-then **File → Live discover (SSH)…** (it confirms authorization first) or
+In the app you don't need a file: **File → Live discover (SSH)…** opens a form
+where you type the host, username, password and device type directly (tick the
+authorization box). The **From file…** button loads a JSON inventory like the one
+above if you'd rather. From the command line:
 `netwright live-discover --inventory inv.json --out net.netwright --authorized`.
 Netwright logs in, runs the platform's neighbor command, and pipes the output
 through the same parsers as the offline path. Passwords come from the inventory
