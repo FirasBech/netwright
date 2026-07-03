@@ -108,8 +108,15 @@ def test_load_inventory(tmp_path):
 
 
 def test_available_reflects_netmiko_presence():
-    # netmiko is intentionally not a bundled dependency in this env.
-    assert available() is False
+    # available() must agree with whether netmiko actually imports, so this holds
+    # whether or not the optional dependency is installed.
+    try:
+        import netmiko  # noqa: F401
+
+        expected = True
+    except Exception:
+        expected = False
+    assert available() is expected
 
 
 def test_dashboard_live_discovery_with_fake_runner(qapp):

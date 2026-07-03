@@ -46,7 +46,7 @@ def available() -> bool:
         import netmiko  # noqa: F401
 
         return True
-    except ImportError:
+    except Exception:
         return False
 
 

@@ -115,7 +115,15 @@ def test_load_inventory(tmp_path):
 
 
 def test_available_reflects_pysnmp_presence():
-    assert available() is False  # pysnmp is not a bundled dependency here
+    # available() must agree with whether pysnmp.hlapi actually imports, so this
+    # holds whether or not the optional dependency is installed.
+    try:
+        import pysnmp.hlapi  # noqa: F401
+
+        expected = True
+    except Exception:
+        expected = False
+    assert available() is expected
 
 
 def test_dashboard_snmp_discovery_with_fake_session(qapp):

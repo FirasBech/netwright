@@ -38,11 +38,18 @@ _CAP_BITS = ["Other", "Repeater", "Bridge", "WLAN", "Router", "Telephone",
 
 def available() -> bool:
     try:
-        import pysnmp.hlapi  # noqa: F401
+        import pysnmp.hlapi.asyncio  # noqa: F401
 
         return True
-    except ImportError:
+    except Exception:
         return False
+
+
+def _text(value) -> str:
+    """Decode an SNMP OctetString (bytes) to text; pass strings through."""
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", "replace").strip()
+    return str(value)
 
 
 def decode_caps(value) -> str:
@@ -100,13 +107,13 @@ def lldp_neighbors_from_session(session: SnmpSession) -> list[Neighbor]:
         parts = idx.split(".")
         # Remote-table index is timeMark.localPortNum.remIndex.
         loc_port_num = parts[1] if len(parts) >= 2 else ""
-        local_intf = str(locports.get(loc_port_num, loc_port_num))
+        local_intf = _text(locports.get(loc_port_num, loc_port_num))
         out.append(
             Neighbor(
                 local_intf=local_intf,
-                neighbor_name=str(name),
-                neighbor_intf=str(portids.get(idx, "")),
-                platform=str(descs.get(idx, "")),
+                neighbor_name=_text(name),
+                neighbor_intf=_text(portids.get(idx, "")),
+                platform=_text(descs.get(idx, "")),
                 mgmt_ip=mgmt.get(idx),
                 capabilities=decode_caps(caps.get(idx, "")),
             )
@@ -130,38 +137,51 @@ def _mgmt_addresses(manaddr: dict[str, object]) -> dict[str, str]:
 
 
 class PysnmpSession:
-    """Real SNMPv2c transport (best-effort; imported lazily)."""
+    """Real SNMPv1/v2c transport over the modern async pysnmp (>= 6) API.
+
+    ``walk`` presents a synchronous interface (it drives the async ``walk_cmd``
+    with ``asyncio.run``), so the rest of the code — and the worker thread the
+    dashboard runs it on — stays synchronous.
+    """
 
     def __init__(self, cred: SnmpCredential, timeout: int = 3, retries: int = 1):
         self.cred = cred
         self.timeout = timeout
         self.retries = retries
 
-    def walk(self, oid: str) -> dict[str, object]:  # pragma: no cover - needs pysnmp
-        from pysnmp.hlapi import (
+    def walk(self, oid: str) -> dict[str, object]:  # pragma: no cover - needs a device
+        import asyncio
+
+        return asyncio.run(self._walk(oid))
+
+    async def _walk(self, oid: str) -> dict[str, object]:  # pragma: no cover
+        from pysnmp.hlapi.asyncio import (
             CommunityData,
             ContextData,
             ObjectIdentity,
             ObjectType,
             SnmpEngine,
             UdpTransportTarget,
-            nextCmd,
+            walk_cmd,
         )
 
+        mp_model = 0 if str(self.cred.version) == "1" else 1  # 0=v1, 1=v2c
+        engine = SnmpEngine()
+        target = await UdpTransportTarget.create(
+            (self.cred.host, self.cred.port),
+            timeout=self.timeout,
+            retries=self.retries,
+        )
         result: dict[str, object] = {}
-        it = nextCmd(
-            SnmpEngine(),
-            CommunityData(self.cred.community, mpModel=1),
-            UdpTransportTarget(
-                (self.cred.host, self.cred.port),
-                timeout=self.timeout,
-                retries=self.retries,
-            ),
+        objects = walk_cmd(
+            engine,
+            CommunityData(self.cred.community, mpModel=mp_model),
+            target,
             ContextData(),
             ObjectType(ObjectIdentity(oid)),
             lexicographicMode=False,
         )
-        for err_ind, err_stat, _err_idx, var_binds in it:
+        async for err_ind, err_stat, _err_idx, var_binds in objects:
             if err_ind or err_stat:
                 break
             for name, val in var_binds:
@@ -169,10 +189,9 @@ class PysnmpSession:
                 if not s.startswith(oid):
                     continue
                 suffix = s[len(oid):].lstrip(".")
-                try:
-                    result[suffix] = val.asOctets()
-                except AttributeError:
-                    result[suffix] = val.prettyPrint()
+                result[suffix] = (
+                    val.asOctets() if hasattr(val, "asOctets") else val.prettyPrint()
+                )
         return result
 
 
