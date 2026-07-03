@@ -1,0 +1,29 @@
+GigabitEthernet0/0/1 has 1 neighbor(s):
+
+Neighbor index :1
+Port ID        :GigabitEthernet0/0/24
+System name    :Access-1
+System description :
+Huawei S5720-28X-LI-AC Switch, Version 5.170
+System capabilities enabled   :Bridge
+Management address     :10.0.0.11
+
+GigabitEthernet0/0/2 has 1 neighbor(s):
+
+Neighbor index :1
+Port ID        :GigabitEthernet0/0/0
+System name    :Edge-RTR
+System description :
+Huawei AR2220E Router
+System capabilities enabled   :Router
+Management address     :10.0.0.254
+
+GigabitEthernet0/0/3 has 1 neighbor(s):
+
+Neighbor index :1
+Port ID        :eth0
+System name    :FileServer
+System description :
+Ubuntu Server 22.04
+System capabilities enabled   :Station
+Management address     :10.0.0.50

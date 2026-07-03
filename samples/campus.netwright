@@ -1,0 +1,53 @@
+{
+  "schema": "netwright.project",
+  "version": 2,
+  "name": "Campus",
+  "created": "2026-01-01T00:00:00",
+  "modified": "2026-01-01T00:00:00",
+  "view": { "zoom": 1.0, "center": [0, 0] },
+  "topology": {
+    "name": "Campus",
+    "default_action": "deny",
+    "metadata": { "note": "Ships with one deliberately-seeded validation error (VLAN 99 host has no gateway / undefined VLAN) for the demo." },
+    "devices": {
+      "core": {
+        "id": "core", "name": "Core-SW", "kind": "switch", "x": 0, "y": 0,
+        "mgmt_ip": "10.0.0.1", "metadata": {},
+        "ports": [
+          { "id": "Gi0/1", "name": "Gi0/1", "mode": "trunk", "access_vlan": null, "native_vlan": 1, "allowed_vlans": [10, 20, 30], "ip": null },
+          { "id": "Gi0/2", "name": "Gi0/2", "mode": "trunk", "access_vlan": null, "native_vlan": 1, "allowed_vlans": [10, 20, 30], "ip": null }
+        ]
+      },
+      "acc1": {
+        "id": "acc1", "name": "Access-1", "kind": "switch", "x": -180, "y": 160,
+        "mgmt_ip": "10.0.0.2", "metadata": {},
+        "ports": [
+          { "id": "Gi0/1", "name": "Gi0/1", "mode": "trunk", "access_vlan": null, "native_vlan": 1, "allowed_vlans": [10, 20, 30], "ip": null },
+          { "id": "Fa0/1", "name": "Fa0/1", "mode": "access", "access_vlan": 10, "native_vlan": null, "allowed_vlans": [], "ip": null }
+        ]
+      },
+      "acc2": {
+        "id": "acc2", "name": "Access-2", "kind": "switch", "x": 180, "y": 160,
+        "mgmt_ip": "10.0.0.3", "metadata": {},
+        "ports": [
+          { "id": "Gi0/1", "name": "Gi0/1", "mode": "trunk", "access_vlan": null, "native_vlan": 1, "allowed_vlans": [10, 20, 30], "ip": null },
+          { "id": "Fa0/1", "name": "Fa0/1", "mode": "access", "access_vlan": 99, "native_vlan": null, "allowed_vlans": [], "ip": null }
+        ]
+      }
+    },
+    "links": {
+      "ln1": { "id": "ln1", "a_device": "core", "a_port": "Gi0/1", "b_device": "acc1", "b_port": "Gi0/1", "kind": "trunk" },
+      "ln2": { "id": "ln2", "a_device": "core", "a_port": "Gi0/2", "b_device": "acc2", "b_port": "Gi0/1", "kind": "trunk" }
+    },
+    "vlans": {
+      "10": { "id": 10, "name": "Sales", "color": "#38bdf8", "subnet": "10.0.10.0/24", "gateway": "10.0.10.1" },
+      "20": { "id": 20, "name": "Engineering", "color": "#34d399", "subnet": "10.0.20.0/24", "gateway": "10.0.20.1" },
+      "30": { "id": 30, "name": "Guest", "color": "#fbbf24", "subnet": "10.0.30.0/24", "gateway": "10.0.30.1" }
+    },
+    "subnets": [],
+    "acls": [
+      { "src_vlan": 10, "dst_vlan": 10, "action": "permit" },
+      { "src_vlan": 20, "dst_vlan": 20, "action": "permit" }
+    ]
+  }
+}

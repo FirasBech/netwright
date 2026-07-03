@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="10" fill="#1e293b"/>
+  <g fill="#38bdf8" stroke="none"><rect x="20" y="16" width="24" height="32" rx="2"/><path d="M20 26h24M20 36h24" stroke="#0f172a" stroke-width="1.5"/><circle cx="26" cy="21" r="1.5"/><circle cx="26" cy="31" r="1.5"/><circle cx="26" cy="41" r="1.5"/></g>
+  <text x="32" y="58" fill="#94a3b8" font-family="sans-serif" font-size="8" text-anchor="middle">server</text>
+</svg>

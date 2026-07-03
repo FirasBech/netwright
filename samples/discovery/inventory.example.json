@@ -1,0 +1,5 @@
+[
+  { "host": "10.0.0.1",   "username": "admin", "device_type": "huawei",    "name": "CoreSW" },
+  { "host": "10.0.0.11",  "username": "admin", "device_type": "huawei",    "name": "Access-1" },
+  { "host": "10.0.0.254", "username": "admin", "device_type": "cisco_ios", "name": "Edge-RTR" }
+]

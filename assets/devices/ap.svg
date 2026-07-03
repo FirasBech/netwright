@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="10" fill="#1e293b"/>
+  <g fill="#38bdf8" stroke="none"><circle cx="32" cy="38" r="4"/><path d="M22 30a14 14 0 0120 0M26 34a8 8 0 0112 0" stroke="#0f172a" stroke-width="2" fill="none"/></g>
+  <text x="32" y="58" fill="#94a3b8" font-family="sans-serif" font-size="8" text-anchor="middle">ap</text>
+</svg>
