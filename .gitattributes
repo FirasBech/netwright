@@ -1,0 +1,12 @@
+# Normalize line endings: LF in the repo, checked out native on Windows.
+* text=auto eol=lf
+
+# Binary assets — never touch line endings.
+*.png binary
+*.ico binary
+*.netwright text eol=lf
+
+# Language hints for GitHub's diff/linguist.
+*.py    text diff=python
+*.md    text
+*.json  text

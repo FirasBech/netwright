@@ -1,0 +1,19 @@
+# Tooling configuration. Netwright runs from source (see the README); this file
+# centralizes test and lint settings rather than declaring an installable
+# distribution.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# UI tests run headless; conftest sets QT_QPA_PLATFORM=offscreen before Qt loads.
+
+[tool.ruff]
+line-length = 90
+target-version = "py311"
+extend-exclude = ["assets", "samples"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "ai", "ui"]

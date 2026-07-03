@@ -34,3 +34,6 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Crash dumps from Git-Bash tooling
+*.stackdump

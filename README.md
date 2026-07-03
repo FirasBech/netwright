@@ -1,11 +1,16 @@
 # Netwright
 
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Netwright is a desktop app for drawing network topologies and planning VLANs.
 You drop switches, routers, firewalls and hosts on a canvas, wire them together,
 assign VLANs and inter-VLAN rules, and it checks the design for the mistakes
 that are easy to make by hand: overlapping subnets, VLAN IDs out of range, a
 trunk that forgot to allow a VLAN it carries, a gateway that isn't actually
 inside its own subnet.
+
+![A Netwright design: VLAN-colored devices, trunk links, and validation catching an undefined VLAN](docs/screenshots/dashboard.png)
 
 Two things make it more than a diagram tool. There's an optional assistant
 (Anthropic's Claude) that takes a request like *"isolate the guest VLAN from
@@ -15,8 +20,8 @@ rebuild the map from your devices' LLDP/CDP neighbor tables instead of making
 you draw it by hand.
 
 It's written in Python with PyQt5. I built it as a companion to my other
-project, [SecureLink](https://github.com/FirasBech) — Netwright exports a
-`vlan_policy.json` in the exact format SecureLink's VLAN guard reads.
+project, SecureLink — Netwright exports a `vlan_policy.json` in the exact format
+SecureLink's VLAN guard reads.
 
 ## Install
 
